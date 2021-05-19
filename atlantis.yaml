@@ -1,0 +1,380 @@
+automerge: false
+parallel_apply: true
+parallel_plan: true
+projects:
+- autoplan:
+    enabled: true
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/autoplan/autoplan_true
+- apply_requirements: []
+  autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/apply_requirements_overrides/standalone_module_that_specifies_empty
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/basic_module
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/apply_requirements_overrides/standalone_module_that_does_not_specify
+- apply_requirements:
+  - mergeable
+  autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/apply_requirements_overrides/standalone_module_that_specifies
+- autoplan:
+    enabled: true
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/autoplan/set_in_parent
+- apply_requirements:
+  - approved
+  autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/apply_requirements_overrides/child_that_does_not_override
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/different_workflow_names/workflowA
+  workflow: workflowA
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/different_workflow_names/defaultWorkflow
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/different_workflow_names/workflowB
+  workflow: workflowB
+- apply_requirements:
+  - mergeable
+  autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/apply_requirements_overrides/child_that_overrides
+- apply_requirements: []
+  autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/apply_requirements_overrides/child_that_overrides_to_empty
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/extra_arguments/no_files_at_all
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../terraform.tfvars
+  dir: test_examples/extra_arguments/only_required_files
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/chained_dependencies/dependency
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/child_and_parent_specify_workflow/child
+  workflow: workflowSpecifiedInChild
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/autoplan/autoplan_false
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../terraform-module/*.tf*
+  dir: test_examples/local_terraform_module_source/terragrunt-module
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../terraform.tfvars
+    - ../dev.tfvars
+    - ../us-east-1.tfvars
+    - dev.tfvars
+    - us-east-1.tfvars
+  dir: test_examples/extra_arguments/child
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../dependency/terragrunt.hcl
+  dir: test_examples/chained_dependencies/depender
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../dev.tfvars
+    - ../us-east-1.tfvars
+    - dev.tfvars
+    - us-east-1.tfvars
+  dir: test_examples/extra_arguments/only_optional_files
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../dependency/terragrunt.hcl
+  dir: test_examples/chained_dependencies/depender_on_depender/nested
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../depender/terragrunt.hcl
+    - ../dependency/terragrunt.hcl
+    - nested/terragrunt.hcl
+  dir: test_examples/chained_dependencies/depender_on_depender
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - some_extra_dep
+    - ../test_file.json
+  dir: test_examples/extra_dependency/child
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../../common_vars/apps/consul/sg.tfvars
+    - main.tfvars
+  dir: test_examples/extra_arguments/var_file
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/multi_accounts_vpc_route53_tgw/network-account/eu-west-1/network/transit-gateway
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - some_parent_dep
+    - ../file_in_parent_of_child.json
+    - ../../parent/folder_under_parent/common_tags.hcl
+    - some_child_dep
+  dir: test_examples/parent_with_extra_deps/deep/child
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../../../network-account/eu-west-1/network/transit-gateway/terragrunt.hcl
+  dir: test_examples/multi_accounts_vpc_route53_tgw/prod/eu-west-1/env-a/network/vpc
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - some_parent_dep
+    - local_tags.yaml
+    - ../file_in_parent_of_child.json
+    - ../../parent/folder_under_parent/common_tags.hcl
+    - some_child_dep
+  dir: test_examples/parent_with_extra_deps/deep_with_local_tags_file/child
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/invalid_parent_module/child/deep
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/parent_with_workflow_local/child
+  workflow: workflowSpecifiedInParent
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../env-a/network/vpc/terragrunt.hcl
+    - ../../../../../network-account/eu-west-1/network/transit-gateway/terragrunt.hcl
+  dir: test_examples/multi_accounts_vpc_route53_tgw/prod/eu-west-1/_global/route53/test-zone
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/terraform_version/inherit_from_parent
+  terraform_version: 0.12.9001
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/terraform_version/override_parent
+  terraform_version: 0.13.9001
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/no_terraform_blocks/myproject/global/dns
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/no_terraform_blocks/myproject/global/iam
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/terraform_version/use_flag_default
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/skip/skip_false
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../account.hcl
+    - ../../region.hcl
+    - ../env.hcl
+  dir: test_examples/terragrunt-infrastructure-live-example/non-prod/us-east-1/qa/webserver-cluster
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../account.hcl
+    - ../../region.hcl
+    - ../env.hcl
+  dir: test_examples/terragrunt-infrastructure-live-example/non-prod/us-east-1/stage/mysql
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../account.hcl
+    - ../../region.hcl
+    - ../env.hcl
+  dir: test_examples/terragrunt-infrastructure-live-example/non-prod/us-east-1/qa/mysql
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/with_parent/child
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../dependency/terragrunt.hcl
+  dir: test_examples/terragrunt_dependency/depender
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/terragrunt_dependency/dependency
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../account.hcl
+    - ../../region.hcl
+    - ../env.hcl
+  dir: test_examples/terragrunt-infrastructure-live-example/prod/us-east-1/prod/webserver-cluster
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../account.hcl
+    - ../../region.hcl
+    - ../env.hcl
+  dir: test_examples/terragrunt-infrastructure-live-example/non-prod/us-east-1/stage/webserver-cluster
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../../account.hcl
+    - ../../region.hcl
+    - ../env.hcl
+  dir: test_examples/terragrunt-infrastructure-live-example/prod/us-east-1/prod/mysql
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../network/terragrunt.hcl
+    - ../../stage/network/terragrunt.hcl
+  dir: test_examples/no_terraform_blocks/myproject/eu-south-1/infra/apps
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+  dir: test_examples/no_terraform_blocks/myproject/eu-south-1/stage/network
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../../stage/network/terragrunt.hcl
+  dir: test_examples/no_terraform_blocks/myproject/eu-south-1/infra/network
+- autoplan:
+    enabled: false
+    when_modified:
+    - '*.hcl'
+    - '*.tf*'
+    - ../network/terragrunt.hcl
+  dir: test_examples/no_terraform_blocks/myproject/eu-south-1/stage/dbs
+version: 3

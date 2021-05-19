@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
+	"golang.org/x/sync/singleflight"
 
 	"context"
 	"io/ioutil"
@@ -46,159 +48,149 @@ func makePathAbsolute(path string, parentPath string) string {
 	return filepath.Join(parentDir, path)
 }
 
-// Set up a cache for the getDependencies function
-type getDependenciesOutput struct {
-	dependencies []string
-	err          error
-}
-
-var getDependenciesCache = make(map[string]getDependenciesOutput)
+var requestGroup singleflight.Group
 
 // Parses the terragrunt config at `path` to find all modules it depends on
 func getDependencies(path string, terragruntOptions *options.TerragruntOptions) ([]string, error) {
-	// Check if this path has already been computed
-	cachedResult, ok := getDependenciesCache[path]
-	if ok {
-		return cachedResult.dependencies, cachedResult.err
-	}
-
-	// if theres no terraform source and we're ignoring parent terragrunt configs
-	// return nils to indicate we should skip this project
-	isParent, err := isParentModule(path, terragruntOptions)
-	if err != nil {
-		getDependenciesCache[path] = getDependenciesOutput{nil, err}
-		return nil, err
-	}
-	if ignoreParentTerragrunt && isParent {
-		getDependenciesCache[path] = getDependenciesOutput{nil, nil}
-		return nil, nil
-	}
-
-	// Parse the HCL file
-	decodeTypes := []config.PartialDecodeSectionType{
-		config.DependencyBlock,
-		config.DependenciesBlock,
-		config.TerraformBlock,
-	}
-	parsedConfig, err := config.PartialParseConfigFile(path, terragruntOptions, nil, decodeTypes)
-	if err != nil {
-		getDependenciesCache[path] = getDependenciesOutput{nil, err}
-		return nil, err
-	}
-
-	// Parse out locals
-	locals, err := parseLocals(path, terragruntOptions, nil)
-	if err != nil {
-		getDependenciesCache[path] = getDependenciesOutput{nil, err}
-		return nil, err
-	}
-
-	// Get deps from locals
-	dependencies := []string{}
-	if locals.ExtraAtlantisDependencies != nil {
-		dependencies = locals.ExtraAtlantisDependencies
-	}
-
-	// Get deps from `dependencies` and `dependency` blocks
-	if parsedConfig.Dependencies != nil && !ignoreDependencyBlocks {
-		for _, parsedPaths := range parsedConfig.Dependencies.Paths {
-			dependencies = append(dependencies, filepath.Join(parsedPaths, "terragrunt.hcl"))
+	res, err, _ := requestGroup.Do(path, func() (interface{}, error) {
+		// if theres no terraform source and we're ignoring parent terragrunt configs
+		// return nils to indicate we should skip this project
+		isParent, err := isParentModule(path, terragruntOptions)
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	// Get deps from the `Source` field of the `Terraform` block
-	if parsedConfig.Terraform != nil && parsedConfig.Terraform.Source != nil {
-		source := parsedConfig.Terraform.Source
-		// TODO: Make more robust. Check for bitbucket, etc.
-		if !strings.Contains(*source, "git::") && !strings.Contains(*source, "github.com") {
-			dependencies = append(dependencies, filepath.Join(*source, "*.tf*"))
+		if ignoreParentTerragrunt && isParent {
+			return nil, nil
 		}
-	}
 
-	// Get deps from `extra_arguments` fields of the `Terraform` block
-	if parsedConfig.Terraform != nil && parsedConfig.Terraform.ExtraArgs != nil {
-		extraArgs := parsedConfig.Terraform.ExtraArgs
-		for _, arg := range extraArgs {
-			if arg.RequiredVarFiles != nil {
-				for _, file := range *arg.RequiredVarFiles {
-					dependencies = append(dependencies, file)
-				}
+		// Parse the HCL file
+		decodeTypes := []config.PartialDecodeSectionType{
+			config.DependencyBlock,
+			config.DependenciesBlock,
+			config.TerraformBlock,
+		}
+		parsedConfig, err := config.PartialParseConfigFile(path, terragruntOptions, nil, decodeTypes)
+		if err != nil {
+			return nil, err
+		}
+
+		// Parse out locals
+		locals, err := parseLocals(path, terragruntOptions, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get deps from locals
+		dependencies := []string{}
+		if locals.ExtraAtlantisDependencies != nil {
+			dependencies = locals.ExtraAtlantisDependencies
+		}
+
+		// Get deps from `dependencies` and `dependency` blocks
+		if parsedConfig.Dependencies != nil && !ignoreDependencyBlocks {
+			for _, parsedPaths := range parsedConfig.Dependencies.Paths {
+				dependencies = append(dependencies, filepath.Join(parsedPaths, "terragrunt.hcl"))
 			}
-			if arg.OptionalVarFiles != nil {
-				for _, file := range *arg.OptionalVarFiles {
-					dependencies = append(dependencies, file)
-				}
+		}
+
+		// Get deps from the `Source` field of the `Terraform` block
+		if parsedConfig.Terraform != nil && parsedConfig.Terraform.Source != nil {
+			source := parsedConfig.Terraform.Source
+			// TODO: Make more robust. Check for bitbucket, etc.
+			if !strings.Contains(*source, "git::") && !strings.Contains(*source, "github.com") {
+				dependencies = append(dependencies, filepath.Join(*source, "*.tf*"))
 			}
-			if arg.Arguments != nil {
-				for _, cliFlag := range *arg.Arguments {
-					if strings.HasPrefix(cliFlag, "-var-file=") {
-						dependencies = append(dependencies, strings.TrimPrefix(cliFlag, "-var-file="))
+		}
+
+		// Get deps from `extra_arguments` fields of the `Terraform` block
+		if parsedConfig.Terraform != nil && parsedConfig.Terraform.ExtraArgs != nil {
+			extraArgs := parsedConfig.Terraform.ExtraArgs
+			for _, arg := range extraArgs {
+				if arg.RequiredVarFiles != nil {
+					for _, file := range *arg.RequiredVarFiles {
+						dependencies = append(dependencies, file)
+					}
+				}
+				if arg.OptionalVarFiles != nil {
+					for _, file := range *arg.OptionalVarFiles {
+						dependencies = append(dependencies, file)
+					}
+				}
+				if arg.Arguments != nil {
+					for _, cliFlag := range *arg.Arguments {
+						if strings.HasPrefix(cliFlag, "-var-file=") {
+							dependencies = append(dependencies, strings.TrimPrefix(cliFlag, "-var-file="))
+						}
 					}
 				}
 			}
 		}
-	}
 
-	// Filter out and dependencies that are the empty string
-	nonEmptyDeps := []string{}
-	for _, dep := range dependencies {
-		if dep != "" {
-			childDepAbsPath := dep
-			if !filepath.IsAbs(childDepAbsPath) {
-				childDepAbsPath = makePathAbsolute(dep, path)
+		// Filter out and dependencies that are the empty string
+		nonEmptyDeps := []string{}
+		for _, dep := range dependencies {
+			if dep != "" {
+				childDepAbsPath := dep
+				if !filepath.IsAbs(childDepAbsPath) {
+					childDepAbsPath = makePathAbsolute(dep, path)
+				}
+				childDepAbsPath = filepath.ToSlash(childDepAbsPath)
+				nonEmptyDeps = append(nonEmptyDeps, childDepAbsPath)
 			}
-			childDepAbsPath = filepath.ToSlash(childDepAbsPath)
-			nonEmptyDeps = append(nonEmptyDeps, childDepAbsPath)
-		}
-	}
-
-	// Recurse to find dependencies of all dependencies
-	cascadedDeps := []string{}
-	for _, dep := range nonEmptyDeps {
-		cascadedDeps = append(cascadedDeps, dep)
-
-		// The "cascading" feature is protected by a flag
-		if !cascadeDependencies {
-			continue
 		}
 
-		depPath := dep
-		terrOpts, err := options.NewTerragruntOptions(depPath)
-		childDeps, err := getDependencies(depPath, terrOpts)
-		if err != nil {
-			continue
-		}
+		// Recurse to find dependencies of all dependencies
+		cascadedDeps := []string{}
+		for _, dep := range nonEmptyDeps {
+			cascadedDeps = append(cascadedDeps, dep)
 
-		for _, childDep := range childDeps {
-			// If `childDep` is a relative path, it will be relative to `childDep`, as it is from the nested
-			// `getDependencies` call on the top level module's dependencies. So here we update any relative
-			// path to be from the top level module instead.
-			childDepAbsPath := childDep
-			if !filepath.IsAbs(childDep) {
-				childDepAbsPath, err = filepath.Abs(filepath.Join(depPath, "..", childDep))
-				if err != nil {
-					getDependenciesCache[path] = getDependenciesOutput{nil, err}
-					return nil, err
+			// The "cascading" feature is protected by a flag
+			if !cascadeDependencies {
+				continue
+			}
+
+			depPath := dep
+			terrOpts, err := options.NewTerragruntOptions(depPath)
+			childDeps, err := getDependencies(depPath, terrOpts)
+			if err != nil {
+				continue
+			}
+
+			for _, childDep := range childDeps {
+				// If `childDep` is a relative path, it will be relative to `childDep`, as it is from the nested
+				// `getDependencies` call on the top level module's dependencies. So here we update any relative
+				// path to be from the top level module instead.
+				childDepAbsPath := childDep
+				if !filepath.IsAbs(childDep) {
+					childDepAbsPath, err = filepath.Abs(filepath.Join(depPath, "..", childDep))
+					if err != nil {
+						return nil, err
+					}
+				}
+				childDepAbsPath = filepath.ToSlash(childDepAbsPath)
+
+				// Ensure we are not adding a duplicate dependency
+				alreadyExists := false
+				for _, dep := range cascadedDeps {
+					if dep == childDepAbsPath {
+						alreadyExists = true
+						break
+					}
+				}
+				if !alreadyExists {
+					cascadedDeps = append(cascadedDeps, childDepAbsPath)
 				}
 			}
-			childDepAbsPath = filepath.ToSlash(childDepAbsPath)
-
-			// Ensure we are not adding a duplicate dependency
-			alreadyExists := false
-			for _, dep := range cascadedDeps {
-				if dep == childDepAbsPath {
-					alreadyExists = true
-					break
-				}
-			}
-			if !alreadyExists {
-				cascadedDeps = append(cascadedDeps, childDepAbsPath)
-			}
 		}
+
+		return cascadedDeps, nil
+	})
+	if res != nil {
+		return res.([]string), err
+	} else {
+		return nil, err
 	}
 
-	getDependenciesCache[path] = getDependenciesOutput{cascadedDeps, nil}
-	return cascadedDeps, nil
 }
 
 // Creates an AtlantisProject for a directory
@@ -389,13 +381,21 @@ func main(cmd *cobra.Command, args []string) error {
 	}
 
 	lock := sync.Mutex{}
-	errGroup, _ := errgroup.WithContext(context.Background())
+	ctx := context.Background()
+	errGroup, _ := errgroup.WithContext(ctx)
+	sem := semaphore.NewWeighted(50)
 
 	// Concurrently looking all dependencies
 	for _, terragruntPath := range terragruntFiles {
 		terragruntPath := terragruntPath // https://golang.org/doc/faq#closures_and_goroutines
 
+		err := sem.Acquire(ctx, 1)
+		if err != nil {
+			continue
+		}
+
 		errGroup.Go(func() error {
+			defer sem.Release(1)
 			project, err := createProject(terragruntPath)
 			if err != nil {
 				return err
@@ -414,10 +414,10 @@ func main(cmd *cobra.Command, args []string) error {
 
 			return nil
 		})
+	}
 
-		if err := errGroup.Wait(); err != nil {
-			return err
-		}
+	if err := errGroup.Wait(); err != nil {
+		return err
 	}
 
 	// Convert config to YAML string
